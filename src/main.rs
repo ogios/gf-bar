@@ -382,7 +382,7 @@ impl PointerHandler for SimpleLayer {
                     // println!("Motion");
                 }
                 Press { button, .. } => {
-                    println!("Press {:x} @ {:?}", button, event.position);
+                    // println!("Press {:x} @ {:?}", button, event.position);
                     self.shift = self.shift.xor(Some(0));
                     println!("register frame");
                     self.layer
@@ -390,7 +390,7 @@ impl PointerHandler for SimpleLayer {
                         .frame(_qh, self.layer.wl_surface().clone());
                 }
                 Release { button, .. } => {
-                    println!("Release {:x} @ {:?}", button, event.position);
+                    // println!("Release {:x} @ {:?}", button, event.position);
                 }
                 Axis {
                     horizontal,
