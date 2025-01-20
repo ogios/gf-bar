@@ -1,6 +1,5 @@
 use gf_bar::text::write::Canvas;
 
-
 use cosmic_text::{Align, Color};
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
@@ -149,6 +148,7 @@ impl CompositorHandler for SimpleLayer {
         _surface: &wl_surface::WlSurface,
         _time: u32,
     ) {
+        println!("draw frame");
         self.width = self.get_width() as u32;
         self.draw(qh);
     }
@@ -378,10 +378,16 @@ impl PointerHandler for SimpleLayer {
                 Leave { .. } => {
                     println!("Pointer left");
                 }
-                Motion { .. } => {}
+                Motion { .. } => {
+                    // println!("Motion");
+                }
                 Press { button, .. } => {
                     println!("Press {:x} @ {:?}", button, event.position);
                     self.shift = self.shift.xor(Some(0));
+                    println!("register frame");
+                    self.layer
+                        .wl_surface()
+                        .frame(_qh, self.layer.wl_surface().clone());
                 }
                 Release { button, .. } => {
                     println!("Release {:x} @ {:?}", button, event.position);
@@ -438,9 +444,9 @@ impl SimpleLayer {
             .wl_surface()
             .damage_buffer(0, 0, width as i32, height as i32);
 
-        self.layer
-            .wl_surface()
-            .frame(qh, self.layer.wl_surface().clone());
+        // self.layer
+        //     .wl_surface()
+        //     .frame(qh, self.layer.wl_surface().clone());
 
         buffer
             .attach_to(self.layer.wl_surface())
