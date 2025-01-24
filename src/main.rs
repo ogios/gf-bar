@@ -451,7 +451,7 @@ impl SimpleLayer {
         buffer
             .attach_to(self.layer.wl_surface())
             .expect("buffer attach");
-        self.layer.set_size(self.width, self.height);
+        self.layer.set_size(self.width / 4, self.height);
         self.layer.commit();
 
         // TODO save and reuse buffer when the window size is unchanged.  This is especially
