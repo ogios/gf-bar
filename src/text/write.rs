@@ -6,9 +6,9 @@ use cosmic_text::{
 };
 
 pub struct Canvas<'a> {
-    canvas_buffer: &'a mut [u8],
-    height: u32,
-    width: u32,
+    pub canvas_buffer: &'a mut [u8],
+    pub height: u32,
+    pub width: u32,
     stride: u32,
 }
 

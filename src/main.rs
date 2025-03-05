@@ -1,5 +1,4 @@
-use gf_bar::text::write::Canvas;
-
+use gf_bar::{copy_pixmap, text::write::Canvas};
 
 use cosmic_text::{Align, Color};
 use smithay_client_toolkit::{
@@ -21,7 +20,10 @@ use smithay_client_toolkit::{
         },
         WaylandSurface,
     },
-    shm::{slot::SlotPool, Shm, ShmHandler},
+    shm::{
+        slot::{Buffer, SlotPool},
+        Shm, ShmHandler,
+    },
 };
 use wayland_client::{
     globals::registry_queue_init,
@@ -39,6 +41,8 @@ fn main() {
     let (globals, mut event_queue) = registry_queue_init(&conn).unwrap();
     let qh = event_queue.handle();
 
+    let output_state = OutputState::new(&globals, &qh);
+
     // The compositor (not to be confused with the server which is commonly called the compositor) allows
     // configuring surfaces to be presented.
     let compositor = CompositorState::bind(&globals, &qh).expect("wl_compositor is not available");
@@ -52,12 +56,17 @@ fn main() {
     let surface = compositor.create_surface(&qh);
 
     // And then we create the layer shell.
-    let layer =
-        layer_shell.create_layer_surface(&qh, surface, Layer::Top, Some("simple_layer"), None);
+    let layer = layer_shell.create_layer_surface(
+        &qh,
+        surface,
+        Layer::Top,
+        Some("simple_layer"),
+        Some(&output_state.outputs().nth(0).unwrap()),
+    );
     // Configure the layer surface, providing things like the anchor on screen, desired size and the keyboard
     // interactivity
-    layer.set_anchor(Anchor::BOTTOM);
-    layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
+    layer.set_anchor(Anchor::all());
+    // layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
     layer.set_size(256, 40);
     layer.set_exclusive_zone(40);
 
@@ -77,7 +86,7 @@ fn main() {
         // listen for seats and outputs.
         registry_state: RegistryState::new(&globals),
         seat_state: SeatState::new(&globals, &qh),
-        output_state: OutputState::new(&globals, &qh),
+        output_state,
         shm,
 
         exit: false,
@@ -90,6 +99,7 @@ fn main() {
         keyboard: None,
         keyboard_focus: false,
         pointer: None,
+        position: (0, 0),
     };
 
     // We don't draw immediately, the configure will notify us when to first draw.
@@ -119,6 +129,7 @@ struct SimpleLayer {
     keyboard: Option<wl_keyboard::WlKeyboard>,
     keyboard_focus: bool,
     pointer: Option<wl_pointer::WlPointer>,
+    position: (i32, i32),
 }
 
 impl CompositorHandler for SimpleLayer {
@@ -149,7 +160,7 @@ impl CompositorHandler for SimpleLayer {
         _surface: &wl_surface::WlSurface,
         _time: u32,
     ) {
-        self.width = self.get_width() as u32;
+        // self.width = self.get_width() as u32;
         self.draw(qh);
     }
 
@@ -217,13 +228,14 @@ impl LayerShellHandler for SimpleLayer {
         configure: LayerSurfaceConfigure,
         _serial: u32,
     ) {
-        if configure.new_size.0 == 0 || configure.new_size.1 == 0 {
-            self.width = 256;
-            self.height = 40;
-        } else {
-            self.width = configure.new_size.0;
-            self.height = configure.new_size.1;
-        }
+        println!("configure: {configure:?}");
+        // if configure.new_size.0 == 0 || configure.new_size.1 == 0 {
+        //     self.width = 256;
+        //     self.height = 40;
+        // } else {
+        //     self.width = configure.new_size.0;
+        //     self.height = configure.new_size.1;
+        // }
 
         // Initiate the first draw.
         if self.first_configure {
@@ -247,15 +259,6 @@ impl SeatHandler for SimpleLayer {
         seat: wl_seat::WlSeat,
         capability: Capability,
     ) {
-        if capability == Capability::Keyboard && self.keyboard.is_none() {
-            println!("Set keyboard capability");
-            let keyboard = self
-                .seat_state
-                .get_keyboard(qh, &seat, None)
-                .expect("Failed to create keyboard");
-            self.keyboard = Some(keyboard);
-        }
-
         if capability == Capability::Pointer && self.pointer.is_none() {
             println!("Set pointer capability");
             let pointer = self
@@ -287,76 +290,6 @@ impl SeatHandler for SimpleLayer {
     fn remove_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}
 }
 
-impl KeyboardHandler for SimpleLayer {
-    fn enter(
-        &mut self,
-        _: &Connection,
-        _: &QueueHandle<Self>,
-        _: &wl_keyboard::WlKeyboard,
-        surface: &wl_surface::WlSurface,
-        _: u32,
-        _: &[u32],
-        keysyms: &[Keysym],
-    ) {
-        if self.layer.wl_surface() == surface {
-            println!("Keyboard focus on window with pressed syms: {keysyms:?}");
-            self.keyboard_focus = true;
-        }
-    }
-
-    fn leave(
-        &mut self,
-        _: &Connection,
-        _: &QueueHandle<Self>,
-        _: &wl_keyboard::WlKeyboard,
-        surface: &wl_surface::WlSurface,
-        _: u32,
-    ) {
-        if self.layer.wl_surface() == surface {
-            println!("Release keyboard focus on window");
-            self.keyboard_focus = false;
-        }
-    }
-
-    fn press_key(
-        &mut self,
-        _conn: &Connection,
-        _qh: &QueueHandle<Self>,
-        _: &wl_keyboard::WlKeyboard,
-        _: u32,
-        event: KeyEvent,
-    ) {
-        println!("Key press: {event:?}");
-        // press 'esc' to exit
-        if event.keysym == Keysym::Escape {
-            self.exit = true;
-        }
-    }
-
-    fn release_key(
-        &mut self,
-        _: &Connection,
-        _: &QueueHandle<Self>,
-        _: &wl_keyboard::WlKeyboard,
-        _: u32,
-        event: KeyEvent,
-    ) {
-        println!("Key release: {event:?}");
-    }
-
-    fn update_modifiers(
-        &mut self,
-        _: &Connection,
-        _: &QueueHandle<Self>,
-        _: &wl_keyboard::WlKeyboard,
-        _serial: u32,
-        modifiers: Modifiers,
-        _layout: u32,
-    ) {
-        println!("Update modifiers: {modifiers:?}");
-    }
-}
-
 impl PointerHandler for SimpleLayer {
     fn pointer_frame(
         &mut self,
@@ -378,7 +311,9 @@ impl PointerHandler for SimpleLayer {
                 Leave { .. } => {
                     println!("Pointer left");
                 }
-                Motion { .. } => {}
+                Motion { .. } => {
+                    self.position = (event.position.0 as i32, event.position.1 as i32);
+                }
                 Press { button, .. } => {
                     println!("Press {:x} @ {:?}", button, event.position);
                     self.shift = self.shift.xor(Some(0));
@@ -405,47 +340,87 @@ impl ShmHandler for SimpleLayer {
 }
 
 impl SimpleLayer {
-    pub fn get_width(&mut self) -> i32 {
+    pub fn aaa(&mut self) -> (i32, i32) {
         let first_output = self.output_state().outputs().next().unwrap();
         let first_output_info = self.output_state().info(&first_output).unwrap();
-        let logical_size = first_output_info.logical_size.as_ref().unwrap();
-        logical_size.0
+        let logical_size = *first_output_info.logical_size.as_ref().unwrap();
+        logical_size
     }
     pub fn draw(&mut self, qh: &QueueHandle<Self>) {
         let width = self.width;
         let height = self.height;
         let stride = self.width as i32 * 4;
 
-        let (buffer, canvas) = self
-            .pool
-            .create_buffer(
-                width as i32,
-                height as i32,
-                stride,
-                wl_shm::Format::Argb8888,
-            )
-            .expect("create buffer");
+        let size = self.aaa();
+
+        // let (_, canvas) = self
+        //     .pool
+        //     .create_buffer(
+        //         width as i32,
+        //         height as i32,
+        //         stride,
+        //         wl_shm::Format::Argb8888,
+        //     )
+        //     .expect("create buffer");
 
         // Tokyo Night Background Color '#1a1b26'
-        let bg_color = Color::rgba(0x1a, 0x1b, 0x26, 0xef);
-        let mut canvas = Canvas::new(canvas, width, height);
+        let bg_color = Color::rgba(0x00, 0xff, 0xff, 0xef);
+        let mut data = vec![0; (height as i32 * stride) as usize];
+        let mut canvas = Canvas::new(data.as_mut(), width, height);
 
-        canvas
-            .set_background(bg_color)
-            .write_text(&get_time(), Align::Center);
+        canvas.set_background(bg_color);
+        // .write_text(&get_time(), Align::Center);
 
-        self.layer
-            .wl_surface()
-            .damage_buffer(0, 0, width as i32, height as i32);
+        let Canvas {
+            canvas_buffer,
+            height,
+            width,
+            ..
+        } = canvas;
+
+        self.layer.wl_surface().damage_buffer(0, 0, size.0, size.1);
 
         self.layer
             .wl_surface()
             .frame(qh, self.layer.wl_surface().clone());
 
+        let (buffer, canvas) = self
+            .pool
+            .create_buffer(size.0, size.1, size.0 * 4, wl_shm::Format::Argb8888)
+            .expect("create buffer");
+
+        canvas.fill(0);
+
+        // let src =
+        //     tiny_skia::Pixmap::from_vec(data, tiny_skia::IntSize::from_wh(width, height).unwrap())
+        //         .unwrap();
+        //
+        // let mut dst =
+        //     tiny_skia::PixmapMut::from_bytes(canvas, size.0 as u32, size.1 as u32).unwrap();
+        // dst.draw_pixmap(
+        //     self.position.0,
+        //     self.position.1,
+        //     src.as_ref(),
+        //     &tiny_skia::PixmapPaint::default(),
+        //     tiny_skia::Transform::default(),
+        //     None,
+        // );
+
+        copy_pixmap(
+            canvas_buffer,
+            width as usize,
+            height as usize,
+            canvas,
+            size.0 as usize,
+            size.1 as usize,
+            self.position.0 as isize,
+            self.position.1 as isize,
+        );
+
         buffer
             .attach_to(self.layer.wl_surface())
             .expect("buffer attach");
-        self.layer.set_size(self.width, self.height);
+        self.layer.set_size(size.0 as u32, size.1 as u32);
         self.layer.commit();
 
         // TODO save and reuse buffer when the window size is unchanged.  This is especially
@@ -464,7 +439,6 @@ delegate_output!(SimpleLayer);
 delegate_shm!(SimpleLayer);
 
 delegate_seat!(SimpleLayer);
-delegate_keyboard!(SimpleLayer);
 delegate_pointer!(SimpleLayer);
 
 delegate_layer!(SimpleLayer);
