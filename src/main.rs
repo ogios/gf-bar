@@ -61,14 +61,16 @@ fn main() {
         surface,
         Layer::Top,
         Some("simple_layer"),
-        Some(&output_state.outputs().nth(0).unwrap()),
+        // Some(&output_state.outputs().nth(0).unwrap()),
+        None,
     );
     // Configure the layer surface, providing things like the anchor on screen, desired size and the keyboard
     // interactivity
     layer.set_anchor(Anchor::all());
     // layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
     layer.set_size(256, 40);
-    layer.set_exclusive_zone(40);
+    // layer.set_exclusive_zone(40);
+    layer.set_layer(Layer::Bottom);
 
     // In order for the layer surface to be mapped, we need to perform an initial commit with no attached\
     // buffer. For more info, see WaylandSurface::commit
@@ -341,6 +343,8 @@ impl ShmHandler for SimpleLayer {
 
 impl SimpleLayer {
     pub fn aaa(&mut self) -> (i32, i32) {
+        // NOTE: THIS IS JUST THE FIRST MOITOR
+        // IF YOU GOT MULTIPLE MONITORS, please change this
         let first_output = self.output_state().outputs().next().unwrap();
         let first_output_info = self.output_state().info(&first_output).unwrap();
         let logical_size = *first_output_info.logical_size.as_ref().unwrap();
